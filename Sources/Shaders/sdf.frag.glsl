@@ -3,7 +3,10 @@
 uniform vec2 screenSize;
 uniform float time;
 out vec4 fragColor;
-uniform mat4 mvp;
+
+uniform vec3 position;
+uniform vec3 look;
+uniform vec3 up;
 
 /**
  * Part 1 Challenges
@@ -16,7 +19,7 @@ uniform mat4 mvp;
 
 const int MAX_MARCHING_STEPS = 255;
 const float MIN_DIST = 0.0;
-const float MAX_DIST = 100.0;
+const float MAX_DIST = 500.0;
 const float EPSILON = 0.0001;
 
 /**
@@ -54,9 +57,12 @@ float differenceSDF(float distA, float distB) {
  * negative indicating inside.
  */
 float sceneSDF(vec3 samplePoint) {
-	float sphereDist = sphereSDF(samplePoint / 1.2) * 1.2;
-	float cubeDist = boxSDF(samplePoint, vec3(1.0, 1.0, 1.0));
-	return intersectSDF(cubeDist, sphereDist);
+    vec3 p = samplePoint;
+    vec3 c = vec3(10.0, 100.0, 10.0);
+    vec3 q = mod(p,c)-0.5*c;
+	float sphereDist = sphereSDF(q / 1.2) * 1.2;
+	float cubeDist = boxSDF(q, vec3(1.0, 1.0, 1.0));
+    return intersectSDF(cubeDist, sphereDist);
 }
 
 /**
@@ -209,12 +215,24 @@ mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
     );
 }
 
+vec3 applyFog(vec3 rgb, float distance) {
+    float fogAmount = 1.0 - exp(-distance * rgb.z);
+    vec3 fogColor = vec3(0.5, 0.6, 0.7);
+    return mix(rgb, fogColor, fogAmount);
+}
+
 void mainImage()
 {
 	vec3 viewDir = rayDirection(45.0, screenSize.xy, gl_FragCoord.xy);
-    vec3 eye = vec3(8.0, 5.0, 8.0);
+    vec3 eye = position;
     
-    mat4 viewToWorld = viewMatrix(eye, vec3(0.5 * sin(time / 10), 0.0, 0.5 * cos(time / 10)), vec3(0.0, 1.0, 0.0));
+    mat4 viewToWorld = viewMatrix(eye, 
+								look, 
+								up);
+
+    // mat4 viewToWorld = viewMatrix(eye, 
+	// 							vec3(0.5 * sin(time / 10), 0.0, 0.5 * cos(time / 10)), 
+	// 							vec3(0.0, 1.0, 0.0));
     
     vec3 worldDir = (viewToWorld * vec4(viewDir, 0.0)).xyz;
 
@@ -235,6 +253,7 @@ void mainImage()
     float shininess = 10.0;
 	
 	vec3 color = phongIllumination(K_a, K_d, K_s, shininess, p, eye);
+    color = applyFog(color, dist / 100);
     
     fragColor = vec4(color, 1.0);
 }

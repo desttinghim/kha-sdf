@@ -18,6 +18,10 @@ import kha.math.FastVector3;
 import kha.math.FastMatrix4;
 import kha.graphics4.ConstantLocation;
 
+import kha.input.Keyboard;
+import kha.input.KeyCode;
+import kha.input.Mouse;
+
 class Project {
 
 	// An array of 3 vectors representing 3 vertices to form a triangle
@@ -44,18 +48,17 @@ class Project {
 	var indexBuffer:IndexBuffer;
 	var pipeline:PipelineState;
 
-	var mvpID:ConstantLocation;
 	var screenSizeID:ConstantLocation;
 	var timeID:ConstantLocation;
-
-	var model:FastMatrix4;
-	var view:FastMatrix4;
-	var projection:FastMatrix4;
-	var mvp:FastMatrix4;
+	var positionID:ConstantLocation;
+	var lookID:ConstantLocation;
+	var upID:ConstantLocation;
 
 	var lastTime:Float;
 
-	var position:FastVector3 = new FastVector3(0, 0, 5); // Initial position: on +Z
+	var position:FastVector3 = new FastVector3(8.0, 5.0, 8.0); // Initial position: on +Z
+	var direction:FastVector3;
+	var up:FastVector3;
 	var horizontalAngle = 3.14; // Initial horizontalAngle: towards -Z
 	var verticalAngle = 0.0; // Initial verticalAngle: none
 
@@ -93,26 +96,10 @@ class Project {
 
 		screenSizeID = pipeline.getConstantLocation("screenSize");
 		timeID = pipeline.getConstantLocation("time");
-		mvpID = pipeline.getConstantLocation("mvp");
+		positionID = pipeline.getConstantLocation("position");
+		lookID = pipeline.getConstantLocation("look");
+		upID = pipeline.getConstantLocation("up");
 
-		// Projection matrix: 45 degree FoV, 4:3 ratio, display range : 0.1 unit <-> 100 units
-		projection = FastMatrix4.perspectiveProjection(45.0, 4.0 / 3.0, 0.1, 100.0);
-
-		// Camera matrix
-		view = FastMatrix4.lookAt(new FastVector3(4, 3, 3), // Camera is at (4, 3, 3), in World space
-														new FastVector3(0, 0, 0), // and looks at origin
-														new FastVector3(0, 1, 0) // Head is up
-		);
-
-		// Model matrix: an identity matrix (model will be at origin)
-		model = FastMatrix4.identity();
-
-		// Our ModelViewProjection: multiplication of our 3 matrices
-		// Remember, matrix multiplication is the other way around
-		mvp = FastMatrix4.identity();
-		mvp = mvp.multmat(projection);
-		mvp = mvp.multmat(view);
-		mvp = mvp.multmat(model);
 
 		// Create vertex buffer
 		vertexBuffer = new VertexBuffer(
@@ -143,6 +130,11 @@ class Project {
 
 		System.notifyOnRender(render);
 		Scheduler.addTimeTask(update, 0, 1 / 60);
+
+		lastTime = System.time;
+
+		Mouse.get().notify(onMouseDown, onMouseUp, onMouseMove, null);
+		Keyboard.get().notify(onKeyDown, onKeyUp);
     }
 
 	public function render(frame:Framebuffer) {
@@ -163,7 +155,12 @@ class Project {
 		g.setIndexBuffer(indexBuffer);
 		g.setVector2(screenSizeID, new FastVector2(frame.width, frame.height));
 		g.setFloat(timeID, System.time);
-		g.setMatrix(mvpID, mvp);
+
+		// Look vector
+		var look = position.add(direction);
+		g.setVector3(positionID, position);
+		g.setVector3(lookID, look);
+		g.setVector3(upID, up);
 
 		// Draw!
 		g.drawIndexedVertices();
@@ -183,7 +180,7 @@ class Project {
 		}
 
 		// Direction: Spherical coordinates to Cartesian coordinates conversion
-		var direction = new FastVector3(
+		direction = new FastVector3(
 				Math.cos(verticalAngle) * Math.sin(horizontalAngle),
 				Math.sin(verticalAngle),
 				Math.cos(verticalAngle) * Math.cos(horizontalAngle)
@@ -197,7 +194,7 @@ class Project {
 		);
 
             // Up vector
-		var up = right.cross(direction);
+		up = right.cross(direction);
 
 		// Movement
 		if (moveForward != 0 || moveBackward != 0) {
@@ -209,18 +206,37 @@ class Project {
 			position = position.add(v);
 		}
 
-		// Look vector
-		var look = position.add(direction);
-
-		// Camera matrix
-		view = FastMatrix4.lookAt(position, // Camera is here
-					look, // and looks here : at the same position, plus "direciotn"
-					up // head is up (set to (0, -1, 0) to look upside-down)
-		);
-
-		mvp = FastMatrix4.identity();
-		mvp = mvp.multmat(projection);
-		mvp = mvp.multmat(view);
-		mvp = mvp.multmat(model);
+		mouseDeltaX = 0.0;
+		mouseDeltaY = 0.0;
 	}
+
+	function onMouseDown(button:Int, x:Int, y:Int) {
+            isMouseDown = true;
+      }
+
+      function onMouseUp(button:Int, x:Int, y:Int) {
+            isMouseDown = false;
+      }
+
+      function onMouseMove(x:Int, y:Int, movementX:Int, movementY:Int) {
+            mouseDeltaX = x - mouseX;
+            mouseDeltaY = y - mouseY;
+
+            mouseX = x;
+            mouseY = y;
+      }
+
+      function onKeyDown(key:Int) {
+            if (key == KeyCode.Up) moveForward = 1.0;
+            if (key == KeyCode.Down) moveBackward = 1.0;
+            if (key == KeyCode.Left) strafeLeft = 1.0;
+            if (key == KeyCode.Right) strafeRight = 1.0;
+      }
+
+      function onKeyUp(key:Int) {
+            if (key == KeyCode.Up) moveForward = 0.0;
+            if (key == KeyCode.Down) moveBackward = 0.0;
+            if (key == KeyCode.Left) strafeLeft = 0.0;
+            if (key == KeyCode.Right) strafeRight = 0.0;
+      }
 }
