@@ -3,6 +3,7 @@
 uniform vec2 screenSize;
 uniform float time;
 out vec4 fragColor;
+uniform mat4 mvp;
 
 /**
  * Part 1 Challenges
@@ -211,9 +212,9 @@ mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
 void mainImage()
 {
 	vec3 viewDir = rayDirection(45.0, screenSize.xy, gl_FragCoord.xy);
-    vec3 eye = vec3(8.0, 5.0, 7.0);
+    vec3 eye = vec3(8.0, 5.0, 8.0);
     
-    mat4 viewToWorld = viewMatrix(eye, vec3(0.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));
+    mat4 viewToWorld = viewMatrix(eye, vec3(0.5 * sin(time / 10), 0.0, 0.5 * cos(time / 10)), vec3(0.0, 1.0, 0.0));
     
     vec3 worldDir = (viewToWorld * vec4(viewDir, 0.0)).xyz;
 

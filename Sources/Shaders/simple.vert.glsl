@@ -5,6 +5,7 @@ in vec3 pos;
 
 uniform vec2 screenSize;
 uniform float time;
+uniform mat4 mvp;
 
 void main() {
 	// Just output position
