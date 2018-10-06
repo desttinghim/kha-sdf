@@ -18,7 +18,7 @@ uniform vec3 up;
  */
 
 const int MAX_MARCHING_STEPS = 255;
-const float MIN_DIST = 0.0;
+const float MIN_DIST = 0.1;
 const float MAX_DIST = 500.0;
 const float EPSILON = 0.0001;
 
@@ -221,6 +221,37 @@ vec3 applyFog(vec3 rgb, float distance) {
     return mix(rgb, fogColor, fogAmount);
 }
 
+float terrain(float x, float z) {
+    return sin(x) * sin(z);
+}
+
+
+float castRay( vec3 ro, vec3 rd )
+{
+    float resT = 0;
+    float delt = 0.01f;
+    const float mint = MIN_DIST;
+    const float maxt = MAX_DIST;
+    float lh = 0.0f;
+    float ly = 0.0f;
+    for( float t = mint; t < maxt; t += delt )
+    {
+        const vec3  p = ro + rd*t;
+        const float h = terrain( p.x, p.z );
+        if( p.y < h )
+        {
+            // interpolate the intersection distance
+            resT = t - delt + delt*(lh-ly)/(p.y-ly-h+lh);
+            return resT;
+        }
+        // allow the error to be proportinal to the distance
+        delt = 0.01f*t;
+        lh = h;
+        ly = p.y;
+    }
+    return resT;
+}
+
 void mainImage()
 {
 	vec3 viewDir = rayDirection(45.0, screenSize.xy, gl_FragCoord.xy);
@@ -236,11 +267,11 @@ void mainImage()
     
     vec3 worldDir = (viewToWorld * vec4(viewDir, 0.0)).xyz;
 
-    float dist = shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);
+    float dist = castRay(eye, worldDir); // shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);
     
     if (dist > MAX_DIST - EPSILON) {
         // Didn't hit anything
-        fragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        fragColor = vec4(0.1, 0.1, 0.3, 0.0);
 		return;
     }
 
@@ -253,7 +284,7 @@ void mainImage()
     float shininess = 10.0;
 	
 	vec3 color = phongIllumination(K_a, K_d, K_s, shininess, p, eye);
-    color = applyFog(color, dist / 100);
+    color = applyFog(color, dist / 50);
     
     fragColor = vec4(color, 1.0);
 }

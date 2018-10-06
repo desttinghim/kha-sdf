@@ -21,6 +21,7 @@ import kha.graphics4.ConstantLocation;
 import kha.input.Keyboard;
 import kha.input.KeyCode;
 import kha.input.Mouse;
+import kha.Scaler;
 
 class Project {
 
