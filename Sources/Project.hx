@@ -21,6 +21,7 @@ import kha.graphics4.ConstantLocation;
 import kha.input.Keyboard;
 import kha.input.KeyCode;
 import kha.input.Mouse;
+import kha.Image;
 
 class Project {
 
@@ -76,6 +77,9 @@ class Project {
 	var speed = 3.0; // 3 units / second
 	var mouseSpeed = 0.005;
 
+	var tempBuffer:Image;
+	var xres = 512;
+	var yres = 300;
 
 	public function new() {
 		// Define vertex structure
@@ -135,11 +139,13 @@ class Project {
 
 		Mouse.get().notify(onMouseDown, onMouseUp, onMouseMove, null);
 		Keyboard.get().notify(onKeyDown, onKeyUp);
+
+		tempBuffer = Image.createRenderTarget(xres, yres);
     }
 
 	public function render(frame:Framebuffer) {
 		// A graphics object which lets us perform 3D operations
-		var g = frame.g4;
+		var g = tempBuffer.g4;
 
 		// Begin rendering
         g.begin();
@@ -153,7 +159,7 @@ class Project {
 		// Bind data we want to draw
 		g.setVertexBuffer(vertexBuffer);
 		g.setIndexBuffer(indexBuffer);
-		g.setVector2(screenSizeID, new FastVector2(frame.width, frame.height));
+		g.setVector2(screenSizeID, new FastVector2(xres, yres));
 		g.setFloat(timeID, System.time);
 
 		// Look vector
@@ -167,6 +173,11 @@ class Project {
 
 		// End rendering
 		g.end();
+
+		// Draw tempBuffer to screen, flipepd vertically
+		frame.g2.begin();
+		frame.g2.drawScaledImage(tempBuffer, 0, frame.height, frame.width, -frame.height);
+		frame.g2.end();
     }
 
 	function update() {

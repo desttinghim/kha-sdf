@@ -22,6 +22,7 @@ const float MIN_DIST = 0.0;
 const float MAX_DIST = 500.0;
 const float EPSILON = 0.0001;
 
+// SDF Shapes
 /**
  * Signed distance function for a sphere centered at the origin with radius 1.0;
  */
@@ -36,6 +37,13 @@ float boxSDF(vec3 p, vec3 b) {
     vec3 d = abs(p) - b;
 	return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
 }
+
+float planeSDF( vec3 samplePoint, vec4 n ) {
+    // n must be normalized
+    return dot(samplePoint, n.xyz) + n.w;
+}
+
+// SDF Operations
 
 float intersectSDF(float distA, float distB) {
 	return max(distA, distB);
@@ -58,11 +66,13 @@ float differenceSDF(float distA, float distB) {
  */
 float sceneSDF(vec3 samplePoint) {
     vec3 p = samplePoint;
-    vec3 c = vec3(10.0, 100.0, 10.0);
+    vec3 c = vec3(10.0, 0.0, 10.0);
     vec3 q = mod(p,c)-0.5*c;
 	float sphereDist = sphereSDF(q / 1.2) * 1.2;
-	float cubeDist = boxSDF(q, vec3(1.0, 1.0, 1.0));
-    return intersectSDF(cubeDist, sphereDist);
+	//float cubeDist = boxSDF(q, vec3(10.0, 1.0, 10.0));
+    float planeDist = planeSDF(samplePoint, vec4(0, 1, 0, 0));
+    float result = unionSDF(sphereDist, planeDist);
+    return result;//intersectSDF(cubeDist, sphereDist);
 }
 
 /**
