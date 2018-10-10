@@ -126,6 +126,7 @@ vec3 estimateNormal(vec3 p) {
 }
 
 float shadow(vec3 ro, vec3 rd, float mint, float maxt) {
+    rd = normalize(rd);
     for (float t=mint; t < maxt;) {
         float h = sceneSDF(ro + rd * t);
         if (h < 0.001) {
@@ -162,7 +163,7 @@ vec3 phongContribForLight(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye,
 	float dotLN = dot(L, N);
 	float dotRV = dot(R, V);
 
-	if (dotLN < 0.0 || shadow(L, p, MIN_DIST, MAX_DIST) < 1.0) {
+	if (dotLN < 0.0) {
 		// Light not visible from this point on surface
 		return vec3(0.0, 0.0, 0.0);
 	}
@@ -210,6 +211,11 @@ vec3 phongIllumination(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 e
                           2.0 * cos(0.37 * time),
                           2.0);
     vec3 light2Intensity = vec3(0.4, 0.4, 0.4);
+
+    // Shadows
+    if (shadow(p, vec3(0, 0.5, 0.5), MIN_DIST, MAX_DIST) > 0.0) {
+        return vec3(0.0);
+    }
     
     color += phongContribForLight(k_d, k_s, alpha, p, eye,
                                   light2Pos,
