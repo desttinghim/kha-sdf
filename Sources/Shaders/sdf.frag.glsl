@@ -125,6 +125,17 @@ vec3 estimateNormal(vec3 p) {
 	));
 }
 
+float shadow(vec3 ro, vec3 rd, float mint, float maxt) {
+    for (float t=mint; t < maxt;) {
+        float h = sceneSDF(ro + rd * t);
+        if (h < 0.001) {
+            return 0.0;
+        }
+        t += h;
+    }
+    return 1.0;
+}
+
 /**
  * Lighting contribution of a single point light source via Phong illumination.
  * 
@@ -151,7 +162,7 @@ vec3 phongContribForLight(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye,
 	float dotLN = dot(L, N);
 	float dotRV = dot(R, V);
 
-	if (dotLN < 0.0) {
+	if (dotLN < 0.0 || shadow(L, p, MIN_DIST, MAX_DIST) < 1.0) {
 		// Light not visible from this point on surface
 		return vec3(0.0, 0.0, 0.0);
 	}
@@ -163,6 +174,7 @@ vec3 phongContribForLight(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye,
 	}
 	return lightIntensity * (k_d * dotLN + k_s * pow(dotRV, alpha));
 }
+
 
 /**
  * Lighting via Phong illumination.
@@ -202,6 +214,27 @@ vec3 phongIllumination(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 e
     color += phongContribForLight(k_d, k_s, alpha, p, eye,
                                   light2Pos,
                                   light2Intensity);    
+    return color;
+}
+
+
+vec3 celShading(vec3 c1, vec3 c2, vec3 c3, vec3 p, vec3 eye) {
+	vec3 N = estimateNormal(p);
+    vec3 color;
+    float intensity;
+	vec3 light1Pos = vec3(4.0 * sin(time),
+						  2.0,
+						  4.0 * cos(time));
+    vec3 lightDir = normalize(light1Pos - p);
+    intensity = dot(lightDir, N);
+
+    if (intensity > 0.95)
+        color = c1;
+    else if (intensity > .5)
+        color = c2;
+    else 
+        color = c3;
+
     return color;
 }
 
@@ -264,6 +297,9 @@ void mainImage()
 	
 	vec3 color = phongIllumination(K_a, K_d, K_s, shininess, p, eye);
     color = applyFog(color, dist / 100);
+    // if (shadow(p, eye, MIN_DIST, MAX_DIST) < 1.0) {
+    //     color = vec3(0.0, 0.0, 0.1);
+    // }
     
     fragColor = vec4(color, 1.0);
 }

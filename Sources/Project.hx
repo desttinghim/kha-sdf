@@ -54,6 +54,8 @@ class Project {
 	var positionID:ConstantLocation;
 	var lookID:ConstantLocation;
 	var upID:ConstantLocation;
+	var sceneListID:ConstantLocation;
+	var sceneList:Array<{pos:FastVector3, shape:Int}>;
 
 	var lastTime:Float;
 
@@ -103,6 +105,7 @@ class Project {
 		positionID = pipeline.getConstantLocation("position");
 		lookID = pipeline.getConstantLocation("look");
 		upID = pipeline.getConstantLocation("up");
+		sceneListID = pipeline.getConstantLocation("sceneList");
 
 
 		// Create vertex buffer
@@ -167,6 +170,9 @@ class Project {
 		g.setVector3(positionID, position);
 		g.setVector3(lookID, look);
 		g.setVector3(upID, up);
+		// Kha apparently doesn't yet support UBO's, so I'll have to
+		// find a workaround or move to a different framework
+		//g.setTextureArray
 
 		// Draw!
 		g.drawIndexedVertices();
