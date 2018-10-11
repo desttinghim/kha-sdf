@@ -8,26 +8,45 @@ uniform vec3 position;
 uniform vec3 look;
 uniform vec3 up;
 
-/**
- * Part 1 Challenges
- * - Make the circle yellow
- * - Make the circle smaller by decreasing its radius
- * - Make the circle smaller by moving the camera back
- * - Make the size of the circle oscillate using the sin() function and the time
- *   uniform provided by shadertoy
- */
-
 const int MAX_MARCHING_STEPS = 255;
 const float MIN_DIST = 0.0;
 const float MAX_DIST = 500.0;
 const float EPSILON = 0.0001;
 
+struct HitObject
+{
+    float dist;
+    vec3 color;
+    vec3 hitPos;
+};
+
 // SDF Shapes
+
+vec3 transformSDF( vec3 p, mat3 t ) {
+    return t * p;
+}
+
+mat4 transpose(mat4 m) {
+    return mat4(
+        vec4( m[0][0], m[1][0], m[2][0], m[3][0] ),
+        vec4( m[0][1], m[1][1], m[2][1], m[3][1] ),
+        vec4( m[0][2], m[1][2], m[2][2], m[3][2] ),
+        vec4( m[0][3], m[1][3], m[2][3], m[3][3] )
+    );
+}
+
 /**
  * Signed distance function for a sphere centered at the origin with radius 1.0;
  */
-float sphereSDF(vec3 samplePoint) {
-    return length(samplePoint) - 1.0;
+HitObject sphereSDF(vec3 ray, vec3 size, vec3 color, mat4 transform) {
+    vec3 rayPrime = vec3(transpose(transform) * vec4(ray, 1));
+    float d = length(rayPrime-size);
+
+    HitObject hitObject;
+    hitObject.dist = d;
+    hitObject.color = color;
+
+    return hitObject;
 }
 
 /**
@@ -57,6 +76,12 @@ float differenceSDF(float distA, float distB) {
 	return max(distA, distB);
 }
 
+vec3 repeat(vec3 samplePoint, vec3 repetition) {
+    vec3 p = samplePoint;
+    vec3 c = repetition;
+    return mod(p,c)-0.5*c;
+}
+
 /**
  * Signed distance function describing the scene.
  * 
@@ -65,13 +90,11 @@ float differenceSDF(float distA, float distB) {
  * negative indicating inside.
  */
 float sceneSDF(vec3 samplePoint) {
-    vec3 p = samplePoint;
-    vec3 c = vec3(10.0, 0.0, 10.0);
-    vec3 q = mod(p,c)-0.5*c;
-	float sphereDist = sphereSDF(q / 1.2) * 1.2;
-	//float cubeDist = boxSDF(q, vec3(10.0, 1.0, 10.0));
+	//float sphereDist = sphereSDF(samplePoint - vec3(0.0, 1.0, 0.0));
+	float cubeDist = boxSDF(samplePoint - vec3(2.0, 2.0, 1.0), vec3(1.0, 1.0, 1.0));
     float planeDist = planeSDF(samplePoint, vec4(0, 1, 0, 0));
-    float result = unionSDF(sphereDist, planeDist);
+    float result = unionSDF(cubeDist, planeDist);
+    //result = unionSDF(cubeDist, result);
     return result;//intersectSDF(cubeDist, sphereDist);
 }
 
@@ -126,15 +149,20 @@ vec3 estimateNormal(vec3 p) {
 }
 
 float shadow(vec3 ro, vec3 rd, float mint, float maxt) {
-    rd = normalize(rd);
-    for (float t=mint; t < maxt;) {
-        float h = sceneSDF(ro + rd * t);
-        if (h < 0.001) {
-            return 0.0;
-        }
-        t += h;
+    float dist = shortestDistanceToSurface(ro, rd, mint, maxt);
+    if (dist == maxt) {
+        return 0.0;
     }
     return 1.0;
+    // rd = normalize(rd);
+    // for (float t=mint; t < maxt;) {
+    //     float h = sceneSDF(ro + rd * t);
+    //     if (h < 0.001) {
+    //         return 0.0;
+    //     }
+    //     t += h;
+    // }
+    // return 1.0;
 }
 
 /**
@@ -193,7 +221,7 @@ vec3 phongContribForLight(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye,
 
 vec3 phongIllumination(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye) {
 	// Ambient light
-	const vec3 ambientLight = 0.5 * vec3(1.0, 1.0, 1.0);
+	const vec3 ambientLight = 0.7 * vec3(1.0, 1.0, 1.0);
 	vec3 color = ambientLight * k_a;
 
 	// First light
@@ -212,15 +240,14 @@ vec3 phongIllumination(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 e
                           2.0);
     vec3 light2Intensity = vec3(0.4, 0.4, 0.4);
 
-    // Shadows
-    if (shadow(p, vec3(0, 0.5, 0.5), MIN_DIST, MAX_DIST) > 0.0) {
-        return vec3(0.0);
-    }
-    
     color += phongContribForLight(k_d, k_s, alpha, p, eye,
                                   light2Pos,
-                                  light2Intensity);    
-    return color;
+                                  light2Intensity);   
+
+    // Shadows
+    float shadowFactor = shadow(p, light1Pos - p, MIN_DIST, 10.0);
+
+    return color * shadowFactor;
 }
 
 

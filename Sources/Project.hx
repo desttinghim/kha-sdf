@@ -59,7 +59,7 @@ class Project {
 
 	var lastTime:Float;
 
-	var position:FastVector3 = new FastVector3(8.0, 5.0, 8.0); // Initial position: on +Z
+	var position:FastVector3 = new FastVector3(0.0, 2.0, 8.0); // Initial position: on +Z
 	var direction:FastVector3;
 	var up:FastVector3;
 	var horizontalAngle = 3.14; // Initial horizontalAngle: towards -Z
