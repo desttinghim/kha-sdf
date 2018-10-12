@@ -10,7 +10,7 @@ uniform vec3 up;
 
 const int MAX_MARCHING_STEPS = 255;
 const float MIN_DIST = 0.0;
-const float MAX_DIST = 100.0;
+const float MAX_DIST = 1000.0;
 const float EPSILON = 0.0001;
 const vec4 SKYCOLOR = vec4(0.31, 0.47, 0.67, 1.0);
 const vec4 AMBIENT = vec4(0.15, 0.2, 0.32, 1.0);
@@ -50,7 +50,7 @@ float subtract(float da, float db) {
 
 // Returns the closest distance to a surface from p in our scene
 float distScene(vec3 p) {
-    p.xyz = mod(p.xyz, 1.0) - vec3(0.5);
+    p.xyz = mod(p.xyz, 5.0) - vec3(2.5);
     return sdSphere(p, 0.25);
 }
 

@@ -23,6 +23,9 @@ import kha.input.KeyCode;
 import kha.input.Mouse;
 import kha.Image;
 
+import kha.Font;
+import kha.Assets;
+
 class Project {
 
 	// An array of 3 vectors representing 3 vertices to form a triangle
@@ -58,6 +61,7 @@ class Project {
 	var sceneList:Array<{pos:FastVector3, shape:Int}>;
 
 	var lastTime:Float;
+	var lastFrameTime:Float;
 
 	var position:FastVector3 = new FastVector3(0.0, 2.0, 8.0); // Initial position: on +Z
 	var direction:FastVector3;
@@ -69,6 +73,8 @@ class Project {
 	var moveBackward = 0.0;
 	var strafeLeft = 0.0;
 	var strafeRight = 0.0;
+	var moveUp = 0.0;
+	var moveDown = 0.0;
 	var isMouseDown = false;
 
 	var mouseX = 0.0;
@@ -84,6 +90,10 @@ class Project {
 	var yres = 300;
 
 	public function new() {
+		Assets.loadEverything(doneLoading);
+    }
+
+	public function doneLoading() {
 		// Define vertex structure
 		var structure = new VertexStructure();
         structure.add("pos", VertexData.Float3);
@@ -135,16 +145,18 @@ class Project {
 		}
 		indexBuffer.unlock();
 
+
 		System.notifyOnRender(render);
 		Scheduler.addTimeTask(update, 0, 1 / 60);
 
 		lastTime = System.time;
+		lastFrameTime = Scheduler.realTime();
 
 		Mouse.get().notify(onMouseDown, onMouseUp, onMouseMove, null);
 		Keyboard.get().notify(onKeyDown, onKeyUp);
 
 		tempBuffer = Image.createRenderTarget(xres, yres);
-    }
+	}
 
 	public function render(frame:Framebuffer) {
 		// A graphics object which lets us perform 3D operations
@@ -181,10 +193,26 @@ class Project {
 		g.end();
 
 		// Draw tempBuffer to screen, flipepd vertically
-		frame.g2.begin();
-		frame.g2.drawScaledImage(tempBuffer, 0, frame.height, frame.width, -frame.height);
-		frame.g2.end();
+		var g2 = frame.g2;
+		g2.begin();
+		g2.drawScaledImage(tempBuffer, 0, frame.height, frame.width, -frame.height);
+		g2.font = Assets.fonts.OpenSans;
+		g2.fontSize = 64;
+		var fps = round(1. / (Scheduler.realTime() - lastFrameTime));
+		g2.drawString('FPS: $fps', 0, 0);
+		g2.end();
+
+		lastFrameTime = Scheduler.realTime();
     }
+
+	/**
+		Uses Math.round to fix a floating point number to a set precision.
+	**/
+	public static function round(number:Float, ?precision=2): Float
+	{
+		number *= Math.pow(10, precision);
+		return Math.round(number) / Math.pow(10, precision);
+	}
 
 	function update() {
 		var deltaTime = Scheduler.time() - lastTime;
@@ -222,6 +250,10 @@ class Project {
 			var v = right.mult(deltaTime * speed * (strafeRight - strafeLeft));
 			position = position.add(v);
 		}
+		if (moveUp != moveDown) {
+			var v = new FastVector3(0.0, 1.0, 0.0).mult(deltaTime * speed * (moveUp - moveDown));
+			position = position.add(v);
+		}
 
 		mouseDeltaX = 0.0;
 		mouseDeltaY = 0.0;
@@ -244,16 +276,20 @@ class Project {
       }
 
       function onKeyDown(key:Int) {
-            if (key == KeyCode.Up) moveForward = 1.0;
-            if (key == KeyCode.Down) moveBackward = 1.0;
-            if (key == KeyCode.Left) strafeLeft = 1.0;
-            if (key == KeyCode.Right) strafeRight = 1.0;
+            if (key == KeyCode.W) moveForward = 1.0;
+            if (key == KeyCode.S) moveBackward = 1.0;
+            if (key == KeyCode.A) strafeLeft = 1.0;
+            if (key == KeyCode.D) strafeRight = 1.0;
+            if (key == KeyCode.Space) moveUp = 1.0;
+            if (key == KeyCode.Shift) moveDown = 1.0;
       }
 
       function onKeyUp(key:Int) {
-            if (key == KeyCode.Up) moveForward = 0.0;
-            if (key == KeyCode.Down) moveBackward = 0.0;
-            if (key == KeyCode.Left) strafeLeft = 0.0;
-            if (key == KeyCode.Right) strafeRight = 0.0;
+            if (key == KeyCode.W) moveForward = 0.0;
+            if (key == KeyCode.S) moveBackward = 0.0;
+            if (key == KeyCode.A) strafeLeft = 0.0;
+            if (key == KeyCode.D) strafeRight = 0.0;
+            if (key == KeyCode.Space) moveUp = 0.0;
+            if (key == KeyCode.Shift) moveDown = 0.0;
       }
 }
