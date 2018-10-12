@@ -44,14 +44,86 @@ float sdSphere(vec3 p, float radius)
 }
 
 // Subtracts distance field db from da
-float subtract(float da, float db) {
+float opSubtract(float da, float db) {
     return max(da, -db);
+}
+
+// Joins distance fields da and db
+float opUnion(float da, float db) {
+    return min(da, db);
+}
+
+// https://www.shadertoy.com/view/XsXfRH
+float hash(vec3 p) {
+    p  = 50.0 * fract( p*0.3183099 + vec3(0.71,0.113,0.419));
+    return -1.0+2.0*fract( p.x*p.y*p.z*(p.x+p.y+p.z) );
+}
+
+// Return value noise (in x) and its derivatives (in yzw)
+vec4 noised(vec3 x) {
+    vec3 p = floor(x);
+    vec3 w = fract(x);
+
+    // cubic interpolation
+    vec3 u = w*w*(3.0-2.0*w);
+    vec3 du = 6.0*w*(1.0-w);
+    
+    float a = hash(p+vec3(0.0,0.0,0.0));
+    float b = hash(p+vec3(1.0,0.0,0.0));
+    float c = hash(p+vec3(0.0,1.0,0.0));
+    float d = hash(p+vec3(1.0,1.0,0.0));
+    float e = hash(p+vec3(0.0,0.0,1.0));
+	float f = hash(p+vec3(1.0,0.0,1.0));
+    float g = hash(p+vec3(0.0,1.0,1.0));
+    float h = hash(p+vec3(1.0,1.0,1.0));
+	
+    float k0 =   a;
+    float k1 =   b - a;
+    float k2 =   c - a;
+    float k3 =   e - a;
+    float k4 =   a - b - c + d;
+    float k5 =   a - c - e + g;
+    float k6 =   a - b - e + f;
+    float k7 = - a + b + c - d + e - f - g + h;
+
+    return vec4( k0 + k1*u.x + k2*u.y + k3*u.z + k4*u.x*u.y + k5*u.y*u.z + k6*u.z*u.x + k7*u.x*u.y*u.z, 
+                 du * vec3( k1 + k4*u.y + k6*u.z + k7*u.y*u.z,
+                            k2 + k5*u.z + k4*u.x + k7*u.z*u.x,
+                            k3 + k6*u.x + k5*u.y + k7*u.x*u.y ) );
+}
+
+// polynomial smooth min (k = 0.1);
+float smin( float a, float b, float k )
+{
+    float h = max( k-abs(a-b), 0.0 );
+    return min( a, b ) - h*h*0.25/k;
+}
+
+float displacement( vec3 p ) {
+    const float a = 1.5;
+    return sin(a * p.x) * sin(a * p.z);
 }
 
 // Returns the closest distance to a surface from p in our scene
 float distScene(vec3 p) {
-    p.xyz = mod(p.xyz, 5.0) - vec3(2.5);
-    return sdSphere(p, 0.25);
+    // Cool sphere fractal
+	float db = sdSphere(p, 2.0);
+	vec3 q = mod(p.xyz, 0.5) - vec3(0.25);
+	float d1 = opSubtract(db, sdBox(q, vec3(0.2)));
+
+    float d2 = 10000.0;
+
+    for(int i = 0; i >= 5; i++) {
+        for(int j = 0; j >= 5; j++) {
+            vec3 a = p - vec3((i-2) * 5.0, -1.0, (j-5) * 5.0);
+            float n = 5.0 - distance(vec2(i, j), vec2(1, 1));
+            d2 = smin(d2, sdSphere(a, n) + displacement(a), 0.1); 
+        }
+    }
+    
+	return opUnion(d1, d2);
+    // p.xyz = mod(p.xyz, 5.0) - vec3(2.5);
+    // return sdSphere(p, 0.25);
 }
 
 // Approximates normal
@@ -190,7 +262,7 @@ vec4 computeColor(vec3 ro, vec3 rd) {
 
     // Diffuse lighting
     color = texture * (
-        getShading(p, normal, LIGHT0POSITION, LIGHTCOLOR) +
+        getShading(p, normal, position, LIGHTCOLOR) +
         getShading(p, normal, vec3(2.0, 3.0, 0.0), vec4(1.0, 0.5, 0.5, 1.0))
         ) / 2.0;
 
