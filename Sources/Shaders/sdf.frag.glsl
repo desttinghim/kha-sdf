@@ -10,119 +10,203 @@ uniform vec3 up;
 
 const int MAX_MARCHING_STEPS = 255;
 const float MIN_DIST = 0.0;
-const float MAX_DIST = 500.0;
+const float MAX_DIST = 100.0;
 const float EPSILON = 0.0001;
+const vec4 SKYCOLOR = vec4(0.31, 0.47, 0.67, 1.0);
+const vec4 AMBIENT = vec4(0.15, 0.2, 0.32, 1.0);
+const vec3 LIGHT0POSITION = vec3(0, 0, 0);
+const vec4 LIGHTCOLOR = vec4(.5, .5, .5, 1.0);
 
-struct HitObject
+// Maps x from [minX, maxX] to [minY, maxY], without clamping
+float mapTo(float x, float minX, float maxX, float minY, float maxY) {
+    float a = (maxY - minY) / (maxX - minX);
+    float b = minY - a * minX;
+    return a * x + b;
+}
+
+// Returns the unsigned distance estimate to a box of the given size
+float udBox(vec3 p, vec3 size)
 {
-    float dist;
-    vec3 color;
-    vec3 hitPos;
-};
-
-// SDF Shapes
-
-vec3 transformSDF( vec3 p, mat3 t ) {
-    return t * p;
+	return length(max(abs(p) - size, vec3(0.0)));
 }
 
-mat4 transpose(mat4 m) {
-    return mat4(
-        vec4( m[0][0], m[1][0], m[2][0], m[3][0] ),
-        vec4( m[0][1], m[1][1], m[2][1], m[3][1] ),
-        vec4( m[0][2], m[1][2], m[2][2], m[3][2] ),
-        vec4( m[0][3], m[1][3], m[2][3], m[3][3] )
-    );
+// Returns the signed distance estimate to a box of the given size
+float sdBox(vec3 p, vec3 size)
+{
+	vec3 d = abs(p) - size;
+	return min(max(d.x, max(d.y, d.z)), 0.0) + udBox(p, size);
 }
 
-/**
- * Signed distance function for a sphere centered at the origin with radius 1.0;
- */
-HitObject sphereSDF(vec3 ray, vec3 size, vec3 color, mat4 transform) {
-    vec3 rayPrime = vec3(transpose(transform) * vec4(ray, 1));
-    float d = length(rayPrime-size);
-
-    HitObject hitObject;
-    hitObject.dist = d;
-    hitObject.color = color;
-
-    return hitObject;
+// Returns signed distance of sphere with radius
+float sdSphere(vec3 p, float radius)
+{
+	return length(p) - radius;
 }
 
-/**
- * Signed distance function for a cube centered at the origin with radius 1.0;
- */
-float boxSDF(vec3 p, vec3 b) {
-    vec3 d = abs(p) - b;
-	return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
+// Subtracts distance field db from da
+float subtract(float da, float db) {
+    return max(da, -db);
 }
 
-float planeSDF( vec3 samplePoint, vec4 n ) {
-    // n must be normalized
-    return dot(samplePoint, n.xyz) + n.w;
+// Returns the closest distance to a surface from p in our scene
+float distScene(vec3 p) {
+    p.xyz = mod(p.xyz, 1.0) - vec3(0.5);
+    return sdSphere(p, 0.25);
 }
 
-// SDF Operations
-
-float intersectSDF(float distA, float distB) {
-	return max(distA, distB);
+// Approximates normal
+vec3 getNormal(vec3 p) {
+	float h = 0.0001;
+	return normalize(vec3(
+		distScene(p + vec3(h, 0, 0)) - distScene(p - vec3(h, 0, 0)),
+		distScene(p + vec3(0, h, 0)) - distScene(p - vec3(0, h, 0)),
+		distScene(p + vec3(0, 0, h)) - distScene(p - vec3(0, 0, h))));
 }
 
-float unionSDF(float distA, float distB) {
-	return min(distA, distB);
-}
+// Returns a value between 0 and 1 depending on how visible p0 is from p1
+// 0 means it's completely blocked, 1 means completely visible
+// k defines the hardness of the shadow
+float getShadow(vec3 p0, vec3 p1, float k) {
+    vec3 rd = normalize(p1 - p0);
+    float t = 10.0 * EPSILON;
+    float maxt = length(p0 - p1);
+    float f = 1.0;
+    for(int i = 0; i< MAX_MARCHING_STEPS; ++i)
+    {
+        float d = distScene(p0 + rd * t);
 
-float differenceSDF(float distA, float distB) {
-	return max(distA, distB);
-}
+        // A surface was hit before we reached p1
+        if (d < EPSILON)
+            return 0.0;
 
-vec3 repeat(vec3 samplePoint, vec3 repetition) {
-    vec3 p = samplePoint;
-    vec3 c = repetition;
-    return mod(p,c)-0.5*c;
-}
+        // Penumbra factor is calculated based on how close we were to
+        // the surface, and how far away we are from the shading point
+		// See http://www.iquilezles.org/www/articles/rmshadows/rmshadows.htm
+        f = min(f, k * d / t);
+        t += d;
 
-/**
- * Signed distance function describing the scene.
- * 
- * Absolute value of the return value indicates the distance to the surface.
- * Sign indicates whether the point is inside or outside the surface,
- * negative indicating inside.
- */
-float sceneSDF(vec3 samplePoint) {
-	//float sphereDist = sphereSDF(samplePoint - vec3(0.0, 1.0, 0.0));
-	float cubeDist = boxSDF(samplePoint - vec3(2.0, 2.0, 1.0), vec3(1.0, 1.0, 1.0));
-    float planeDist = planeSDF(samplePoint, vec4(0, 1, 0, 0));
-    float result = unionSDF(cubeDist, planeDist);
-    //result = unionSDF(cubeDist, result);
-    return result;//intersectSDF(cubeDist, sphereDist);
-}
-
-/**
- * Return the shortest distance from the eyepoint to the scene surface along
- * the marching direction. If no part of the surface is found between start and end,
- * return end.
- * 
- * eye: the eye point, acting as the origin of the ray
- * marchingDirection: the normalized direction to march in
- * start: the starting distance away from the eye
- * end: the max distance away from the ey to march before giving up
- */
-float shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {
-    float depth = start;
-    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
-        float dist = sceneSDF(eye + depth * marchingDirection);
-        if (dist < EPSILON) {
-			return depth;
-        }
-        depth += dist;
-        if (depth >= end) {
-            return end;
-        }
+        // We reached p1
+        if (t >= maxt) 
+            break;
     }
-    return end;
+
+    return f;
 }
-            
+
+// Calculate the light intensity with soft shadows
+// p: point on surface
+// lightPos: position of the light source
+// lightColor: the radiance of the light source
+// returns: the color of the point
+vec4 getShading(vec3 p, vec3 normal, vec3 lightPos, vec4 lightColor) {
+    float lightIntensity = 0.0;
+    float shadow = getShadow(p, lightPos, 16.0);
+    if (shadow > 0.0) { // If we are at all visible
+        vec3 lightDirection = normalize(lightPos - p);
+        lightIntensity = shadow * clamp(dot(normal, lightDirection), 0.0, 1.0);
+    }
+
+    return lightColor * lightIntensity + AMBIENT * (1.0 - lightIntensity);
+}
+
+
+// lightPos: position of the light source
+// lightColor: the radiance of the light source
+// returns: the color of the point
+void raymarch(vec3 ro, vec3 rd, out int i, out float t) {
+    t = 0.0;
+    for (int j =0; j < MAX_MARCHING_STEPS; ++i) {
+        vec3 p = ro + rd * t;
+        float d = distScene(p);
+        if(d < EPSILON || t > MAX_DIST) {
+            i = j;
+            break;
+        }
+        t += d;
+    }
+}
+
+// lightPos: position of the light source
+// lightColor: the radiance of the light source
+// returns: the color of the point
+float ambientOcclusion(vec3 p, vec3 n) {
+    float stepSize = 0.01;
+    float t = stepSize;
+    float oc = 0.0;
+    for (int i = 0; i < 10; ++i) {
+        float d = distScene(p + n * t);
+        oc += t - d; // Actual distance to surface - distance field value
+        t += stepSize;
+    }
+
+    return clamp(oc, 0.0, 1.0);
+}
+
+// Create a checkboard texture
+vec4 getFloorTexture(vec3 p) {
+    vec2 m = mod(p.xz, 2.0) - vec2(1.0);
+    return m.x * m.y > 0.0 ? vec4(0.1) : vec4(1.0);
+}
+
+// To improve perf, we raytrace the floor
+// n: floor normal
+// o: floor position
+float raytraceFloor(vec3 ro, vec3 rd, vec3 n, vec3 o) {
+    return dot(o - ro, n) / dot(rd, n);
+}
+
+// Computes the color corresponding to the ray intersection point (if any)
+vec4 computeColor(vec3 ro, vec3 rd) {
+    float t0;
+    int i;
+    raymarch(ro, rd, i, t0);
+    
+    vec3 floorNormal = vec3(0, 1, 0);
+    float t1 = raytraceFloor(ro, rd, floorNormal, vec3(0, -0.5, 0));
+
+    vec3 p; // Surface point
+    vec3 normal; // Surface normal
+    float t; // Distance traveled by ray from eye
+    vec4 texture = vec4(1.0); // Surface texture
+
+    if (t1 < t0 && t1 >= MIN_DIST && t1 <= MAX_DIST)  { // The floor was closest
+        t = t1;
+        p = ro + rd * t1;
+        normal = floorNormal;
+        texture = getFloorTexture(p);
+    } else if(i < MAX_MARCHING_STEPS && t0 >= MIN_DIST && t0 <= MAX_DIST) {
+        t = t0;
+        p = ro + rd * t0;
+        normal = getNormal(p);
+    } else {
+        return SKYCOLOR;
+    }
+
+    vec4 color;
+    float z = mapTo(t, MIN_DIST, MAX_DIST, 1.0, 0.0);
+
+    // Color based on depth
+	//color = vec4(1.0) * z;
+
+    // Diffuse lighting
+    color = texture * (
+        getShading(p, normal, LIGHT0POSITION, LIGHTCOLOR) +
+        getShading(p, normal, vec3(2.0, 3.0, 0.0), vec4(1.0, 0.5, 0.5, 1.0))
+        ) / 2.0;
+
+    // Color based on surface normal
+    //color = vec4(abs(normal), 1.0);
+
+    // Blend in ambient occlusion factor
+    float ao = ambientOcclusion(p, normal);
+    color = color * (1.0 - ao);
+
+    // Blend the background color based on the distance from the camera
+    float zSqrd = z * z;
+    color = mix(SKYCOLOR, color, zSqrd * (3.0 - 2.0 * z)); // Fog
+
+    return color;
+}
 
 /**
  * Return the normalized direction to march in from the eye point for a single pixel.
@@ -135,140 +219,6 @@ vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
     vec2 xy = fragCoord - size / 2.0;
     float z = size.y / tan(radians(fieldOfView) / 2.0);
     return normalize(vec3(xy, -z));
-}
-
-/**
- * Using the gradient of the SDF, estimate the normal on the surface at point p.
- */
-vec3 estimateNormal(vec3 p) {
-	return normalize(vec3(
-		sceneSDF(vec3(p.x + EPSILON, p.y, p.z)) - sceneSDF(vec3(p.x - EPSILON, p.y, p.z)),
-        sceneSDF(vec3(p.x, p.y + EPSILON, p.z)) - sceneSDF(vec3(p.x, p.y - EPSILON, p.z)),
-        sceneSDF(vec3(p.x, p.y, p.z  + EPSILON)) - sceneSDF(vec3(p.x, p.y, p.z - EPSILON))
-	));
-}
-
-float shadow(vec3 ro, vec3 rd, float mint, float maxt) {
-    float dist = shortestDistanceToSurface(ro, rd, mint, maxt);
-    if (dist == maxt) {
-        return 0.0;
-    }
-    return 1.0;
-    // rd = normalize(rd);
-    // for (float t=mint; t < maxt;) {
-    //     float h = sceneSDF(ro + rd * t);
-    //     if (h < 0.001) {
-    //         return 0.0;
-    //     }
-    //     t += h;
-    // }
-    // return 1.0;
-}
-
-/**
- * Lighting contribution of a single point light source via Phong illumination.
- * 
- * The vec3 returned is the RGB color of the light's contribution.
- *
- * k_a: Ambient color
- * k_d: Diffuse color
- * k_s: Specular color
- * alpha: Shininess coefficient
- * p: position of point being lit
- * eye: the position of the camera
- * lightPos: the position of the light
- * lightIntensity: color/intensity of the light
- *
- * See https://en.wikipedia.org/wiki/Phong_reflection_model#Description
- */
-vec3 phongContribForLight(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye,
-                          vec3 lightPos, vec3 lightIntensity) {
-	vec3 N = estimateNormal(p);
-	vec3 L = normalize(lightPos - p);
-	vec3 V = normalize(eye - p);
-	vec3 R = normalize(reflect(-L, N));
-
-	float dotLN = dot(L, N);
-	float dotRV = dot(R, V);
-
-	if (dotLN < 0.0) {
-		// Light not visible from this point on surface
-		return vec3(0.0, 0.0, 0.0);
-	}
-
-	if (dotRV < 0.0) {
-		// Light reflection in opposite direction as viewer, apply only diffuse
-		// component
-		return lightIntensity * (k_d * dotLN);
-	}
-	return lightIntensity * (k_d * dotLN + k_s * pow(dotRV, alpha));
-}
-
-
-/**
- * Lighting via Phong illumination.
- * 
- * The vec3 returned is the RGB color of that point after lighting is applied.
- * k_a: Ambient color
- * k_d: Diffuse color
- * k_s: Specular color
- * alpha: Shininess coefficient
- * p: position of point being lit
- * eye: the position of the camera
- *
- * See https://en.wikipedia.org/wiki/Phong_reflection_model#Description
- */
-
-vec3 phongIllumination(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye) {
-	// Ambient light
-	const vec3 ambientLight = 0.7 * vec3(1.0, 1.0, 1.0);
-	vec3 color = ambientLight * k_a;
-
-	// First light
-	vec3 light1Pos = vec3(4.0 * sin(time),
-						  2.0,
-						  4.0 * cos(time));
-	vec3 light1Intensity = vec3(0.4, 0.4, 0.4);
-
-	color += phongContribForLight(k_d, k_s, alpha, p, eye,
-								  light1Pos,
-								  light1Intensity);
-	
-	// Second light
-	vec3 light2Pos = vec3(2.0 * sin(0.37 * time),
-                          2.0 * cos(0.37 * time),
-                          2.0);
-    vec3 light2Intensity = vec3(0.4, 0.4, 0.4);
-
-    color += phongContribForLight(k_d, k_s, alpha, p, eye,
-                                  light2Pos,
-                                  light2Intensity);   
-
-    // Shadows
-    float shadowFactor = shadow(p, light1Pos - p, MIN_DIST, 10.0);
-
-    return color * shadowFactor;
-}
-
-
-vec3 celShading(vec3 c1, vec3 c2, vec3 c3, vec3 p, vec3 eye) {
-	vec3 N = estimateNormal(p);
-    vec3 color;
-    float intensity;
-	vec3 light1Pos = vec3(4.0 * sin(time),
-						  2.0,
-						  4.0 * cos(time));
-    vec3 lightDir = normalize(light1Pos - p);
-    intensity = dot(lightDir, N);
-
-    if (intensity > 0.95)
-        color = c1;
-    else if (intensity > .5)
-        color = c2;
-    else 
-        color = c3;
-
-    return color;
 }
 
 /**
@@ -291,53 +241,16 @@ mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
     );
 }
 
-vec3 applyFog(vec3 rgb, float distance) {
-    float fogAmount = 1.0 - exp(-distance * rgb.z);
-    vec3 fogColor = vec3(0.5, 0.6, 0.7);
-    return mix(rgb, fogColor, fogAmount);
-}
-
-void mainImage()
-{
-	vec3 viewDir = rayDirection(45.0, screenSize.xy, gl_FragCoord.xy);
-    vec3 eye = position;
-    
-    mat4 viewToWorld = viewMatrix(eye, 
+void main() {
+    float aspectRatio = screenSize.x / screenSize.y;
+    vec3 ro = position;
+    vec3 vd = rayDirection(45.0, screenSize.xy, gl_FragCoord.xy);
+    mat4 viewToWorld = viewMatrix(ro, 
 								look, 
 								up);
+    vec3 rd = (viewToWorld * vec4(vd, 0.0)).xyz;
 
-    // mat4 viewToWorld = viewMatrix(eye, 
-	// 							vec3(0.5 * sin(time / 10), 0.0, 0.5 * cos(time / 10)), 
-	// 							vec3(0.0, 1.0, 0.0));
-    
-    vec3 worldDir = (viewToWorld * vec4(viewDir, 0.0)).xyz;
+    vec4 color = computeColor(ro, rd);
 
-    float dist = shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);
-    
-    if (dist > MAX_DIST - EPSILON) {
-        // Didn't hit anything
-        fragColor = vec4(0.0, 0.0, 0.0, 0.0);
-		return;
-    }
-
-	// The closest point on the surface to the eyepoint along the view ray
-    vec3 p = eye + dist * worldDir;
-    
-    vec3 K_a = vec3(0.2, 0.2, 0.2);
-    vec3 K_d = vec3(0.7, 0.2, 0.2);
-    vec3 K_s = vec3(1.0, 1.0, 1.0);
-    float shininess = 10.0;
-	
-	vec3 color = phongIllumination(K_a, K_d, K_s, shininess, p, eye);
-    color = applyFog(color, dist / 100);
-    // if (shadow(p, eye, MIN_DIST, MAX_DIST) < 1.0) {
-    //     color = vec3(0.0, 0.0, 0.1);
-    // }
-    
-    fragColor = vec4(color, 1.0);
-}
-
-void main() {
-	mainImage();
-    //fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+    fragColor = vec4(color.xyz, 1.0);
 }
