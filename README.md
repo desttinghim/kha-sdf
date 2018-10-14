@@ -18,7 +18,7 @@ In any case, this is an implementation in haxe and kha, for learning purposes.
 
 ## Running
 
-Install kode studio, open the folder as a project, hit run. Hopefully. I wasn't 
+Install [kode studio](http://kha.tech/), open the folder as a project, hit run. Hopefully. I wasn't 
 exactly aiming for a reproducible build here.
 
 ## Future plans
