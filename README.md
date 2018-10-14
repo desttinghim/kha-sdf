@@ -26,3 +26,7 @@ Voxels. I'll probably be borrowing a lot of ideas from [VoxelQuest](https://www.
 and [Dreams](http://dreams.mediamolecule.com/). I'm thinking of using voxels for the rendering, 
 but storing the data as SDF edits to a voxel field. Which is a lot like how Dreams
 works, but it is a really awesome approach so can you really blame me?
+
+## Screenshots
+![First Screenshot](Images/screen1.png)
+![Second Screenshot](Images/screen2.png)
